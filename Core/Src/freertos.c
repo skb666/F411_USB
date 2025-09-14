@@ -26,6 +26,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+
+#include "SEGGER_RTT.h"
+#include "xcmd.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -176,6 +179,21 @@ void MX_FREERTOS_Init(void) {
 }
 
 /* USER CODE BEGIN Header_AppTaskStart */
+#define ARRAY_SIZE(array_name) ((int)(sizeof(array_name) / sizeof(array_name[0])))
+
+static void xcmd_entry(void *arg);
+
+static struct TaskInit_t {
+  TaskFunction_t pxTaskCode;
+  const char *const pcName;
+  const configSTACK_DEPTH_TYPE uxStackDepth;
+  void *const pvParameters;
+  UBaseType_t uxPriority;
+} xTaskInitTable[] = {
+  {xcmd_entry, "shell", 512, NULL, 6},
+};
+static TaskHandle_t xTaskHandles[ARRAY_SIZE(xTaskInitTable)];
+
 /**
   * @brief  Function implementing the app_start thread.
   * @param  argument: Not used
@@ -185,10 +203,22 @@ void MX_FREERTOS_Init(void) {
 __weak void AppTaskStart(void const * argument)
 {
   /* USER CODE BEGIN AppTaskStart */
-  /* Infinite loop */
-  for(;;)
-  {
-    printf("hello world! (%lu)\r\n", HAL_GetTick());
+  BaseType_t ret;
+
+  for (size_t i = 0; i < ARRAY_SIZE(xTaskInitTable); ++i) {
+    ret = xTaskCreate(xTaskInitTable[i].pxTaskCode,
+                      xTaskInitTable[i].pcName,
+                      xTaskInitTable[i].uxStackDepth,
+                      xTaskInitTable[i].pvParameters,
+                      xTaskInitTable[i].uxPriority,
+                      &xTaskHandles[i]);
+    if (pdPASS != ret) {
+        printf("\r\nTask \"%s\" failed to be created! (%ld)\r\n", xTaskInitTable[i].pcName, ret);
+        Error_Handler();
+    }
+  }
+
+  for (;;) {
     LL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
     osDelay(500);
   }
@@ -197,5 +227,156 @@ __weak void AppTaskStart(void const * argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
+void taskYieldToAll(void) {
+  UBaseType_t uxSaved = uxTaskPriorityGet(NULL);
+  vTaskPrioritySet(NULL, tskIDLE_PRIORITY);  // 降到 0
+  /* 此时调度器立刻选下一个最高就绪任务 */
+  vTaskPrioritySet(NULL, uxSaved);  // 再升回来
+}
 
+int cmd_get_char(uint8_t *ch) {
+  return (1 == SEGGER_RTT_Read(0, ch, 1));
+}
+
+int cmd_put_char(uint8_t ch) {
+  return SEGGER_RTT_PutChar(0, ch);
+}
+
+static void xcmd_entry(void *arg) {
+  xcmd_init(cmd_get_char, cmd_put_char);
+
+  for (;;) {
+    xcmd_task();
+    taskYieldToAll();
+  }
+}
+
+/*
+ * Macros used by vListTask to indicate which state a task is in.
+ */
+#define tskRUNNING_CHAR ('X')
+#define tskBLOCKED_CHAR ('B')
+#define tskREADY_CHAR ('R')
+#define tskDELETED_CHAR ('D')
+#define tskSUSPENDED_CHAR ('S')
+
+int cmd_ps(int argc, char **argv) {
+  char pxWriteBuffer[256];
+  TaskStatus_t *pxTaskStatusArray;
+  volatile UBaseType_t uxArraySize, x;
+  uint32_t ulTotalRunTime, ulStatsAsPercentage;
+  char cStatus;
+
+  /* Take a snapshot of the number of tasks in case it changes while this
+      function is executing. */
+  uxArraySize = uxTaskGetNumberOfTasks();
+
+  /* Allocate a TaskStatus_t structure for each task. An array could be
+      allocated statically at compile time. */
+  pxTaskStatusArray = pvPortMalloc(uxArraySize * sizeof(TaskStatus_t));
+
+  if (pxTaskStatusArray != NULL) {
+    snprintf(pxWriteBuffer, sizeof(pxWriteBuffer),
+              "%-*s %-*s %-*s %-*s %-*s %-*s %s\r\n",
+              16, "thread",
+              8, "status",
+              8, "prio",
+              8, "remain",
+              8, "id",
+              16, "tick",
+              "used");
+    printf("%s", pxWriteBuffer);
+    snprintf(pxWriteBuffer, sizeof(pxWriteBuffer),
+              "%-*s %-*s %-*s %-*s %-*s %-*s %s\r\n",
+              16, "----------------",
+              8, "--------",
+              8, "--------",
+              8, "--------",
+              8, "--------",
+              16, "----------------",
+              "-----");
+    printf("%s", pxWriteBuffer);
+
+    /* Generate raw status information about each task. */
+    uxArraySize = uxTaskGetSystemState(pxTaskStatusArray, uxArraySize, &ulTotalRunTime);
+
+    /* For percentage calculations. */
+    ulTotalRunTime /= 100UL;
+
+    /* Avoid divide by zero errors. */
+    if (ulTotalRunTime > 0) {
+      /* For each populated position in the pxTaskStatusArray array,
+          format the raw data as human readable ASCII data. */
+      for (x = 0; x < uxArraySize; x++) {
+        switch (pxTaskStatusArray[x].eCurrentState) {
+          case eRunning:
+            cStatus = tskRUNNING_CHAR;
+            break;
+
+          case eReady:
+            cStatus = tskREADY_CHAR;
+            break;
+
+          case eBlocked:
+            cStatus = tskBLOCKED_CHAR;
+            break;
+
+          case eSuspended:
+            cStatus = tskSUSPENDED_CHAR;
+            break;
+
+          case eDeleted:
+            cStatus = tskDELETED_CHAR;
+            break;
+
+          case eInvalid: /* Fall through. */
+          default:       /* Should not get here, but it is included
+                          * to prevent static checking errors. */
+            cStatus = (char)0x00;
+            break;
+        }
+
+        /* What percentage of the total run time has the task used?
+            This will always be rounded down to the nearest integer.
+            ulTotalRunTimeDiv100 has already been divided by 100. */
+        ulStatsAsPercentage = pxTaskStatusArray[x].ulRunTimeCounter / ulTotalRunTime;
+
+        if (ulStatsAsPercentage > 0UL) {
+          snprintf(pxWriteBuffer, sizeof(pxWriteBuffer),
+                    "%-*s %-*c %-*u %-*u %-*u %-*lu %lu%%\r\n",
+                    16, pxTaskStatusArray[x].pcTaskName,
+                    8, cStatus,
+                    8, (unsigned int)pxTaskStatusArray[x].uxCurrentPriority,
+                    8, (unsigned int)pxTaskStatusArray[x].usStackHighWaterMark,
+                    8, (unsigned int)pxTaskStatusArray[x].xTaskNumber,
+                    16, pxTaskStatusArray[x].ulRunTimeCounter,
+                    ulStatsAsPercentage);
+          printf("%s", pxWriteBuffer);
+        } else {
+          /* If the percentage is zero here then the task has
+              consumed less than 1% of the total run time. */
+          snprintf(pxWriteBuffer, sizeof(pxWriteBuffer),
+                    "%-*s %-*c %-*u %-*u %-*u %-*lu %s\r\n",
+                    16, pxTaskStatusArray[x].pcTaskName,
+                    8, cStatus,
+                    8, (unsigned int)pxTaskStatusArray[x].uxCurrentPriority,
+                    8, (unsigned int)pxTaskStatusArray[x].usStackHighWaterMark,
+                    8, (unsigned int)pxTaskStatusArray[x].xTaskNumber,
+                    16, pxTaskStatusArray[x].ulRunTimeCounter,
+                    "<1%");
+          printf("%s", pxWriteBuffer);
+        }
+      }
+    }
+
+    /* The array is no longer needed, free the memory it consumes. */
+    vPortFree(pxTaskStatusArray);
+  }
+
+  snprintf(pxWriteBuffer, sizeof(pxWriteBuffer), ">>-------------------  free heap memory: %6d bytes  -------------------<<\r\n", xPortGetFreeHeapSize());
+  printf("%s", pxWriteBuffer);
+
+  return 0;
+}
+XCMD_EXPORT_CMD(ps, cmd_ps, "list task info");
 /* USER CODE END Application */

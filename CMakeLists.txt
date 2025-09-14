@@ -46,6 +46,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 file(GLOB USER_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/Users/RTT/RTT/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Users/RTT/Syscalls/SEGGER_RTT_Syscalls_GCC.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Users/xcmd/src/*.c
 )
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
@@ -57,6 +58,8 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     ${CMAKE_CURRENT_SOURCE_DIR}/Users/RTT/RTT
     ${CMAKE_CURRENT_SOURCE_DIR}/Users/RTT/Config
+    ${CMAKE_CURRENT_SOURCE_DIR}/Users/xcmd/inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Users/ports/inc
 )
 
 # Add project symbols (macros)

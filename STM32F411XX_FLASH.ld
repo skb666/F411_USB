@@ -93,6 +93,21 @@ SECTIONS
     _etext = .;        /* define a global symbols at end of code */
   } >FLASH
 
+  .xcmd :
+  {
+    . = ALIGN(4);
+    _xcmd_cmd_list_start = .;
+    KEEP (*(_xcmd_cmd_list))
+    . = ALIGN(4);
+    _xcmd_cmd_list_end = .;
+
+    . = ALIGN(4);
+    _xcmd_key_list_start = .;
+    KEEP (*(_xcmd_key_list))
+    . = ALIGN(4);
+    _xcmd_key_list_end = .;
+  } >FLASH
+
   /* Constant data goes into FLASH */
   .rodata :
   {
