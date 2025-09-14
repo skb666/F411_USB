@@ -379,4 +379,12 @@ int cmd_ps(int argc, char **argv) {
   return 0;
 }
 XCMD_EXPORT_CMD(ps, cmd_ps, "list task info");
+
+int cmd_hardfault(int argc, char **argv) {
+  /* Cause a hardfault */
+  volatile uint32_t *invalidPtr = (uint32_t*)0xCCCCCCCC;
+  volatile uint32_t notGonnaHappen = *invalidPtr;
+  return notGonnaHappen;
+}
+XCMD_EXPORT_CMD(hardfault, cmd_hardfault, "Cause a hardfault");
 /* USER CODE END Application */

@@ -3,4 +3,5 @@
         "--compile-commands-dir=${workspaceFolder}/build/Debug",
     ],
     "cortex-debug.JLinkGDBServerPath.windows": "C:\\Program Files\\SEGGER\\JLink\\JLinkGDBServerCL.exe",
+    "cortex-debug.variableUseNaturalFormat": false,
 }

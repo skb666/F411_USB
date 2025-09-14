@@ -47,6 +47,7 @@ file(GLOB USER_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/Users/RTT/RTT/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Users/RTT/Syscalls/SEGGER_RTT_Syscalls_GCC.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Users/xcmd/src/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Users/ports/src/*.c
 )
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
@@ -65,6 +66,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
+    USE_FREERTOS
 )
 
 # Remove wrong libob.a library dependency when using cpp files
